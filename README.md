@@ -9,7 +9,7 @@
             font-family: Arial, sans-serif;
             margin: 20px;
         }
-        h1, h2 {
+        h1, h2, h3 {
             color: #333;
         }
         .product, .note {
@@ -39,51 +39,15 @@
     <div class="nav">
         <a href="#" onclick="showPage('products')">Produtos</a> | 
         <a href="#" onclick="showPage('sales')">Vendas</a> | 
-        <a href="#" onclick="showPage('notes')">Anotações</a>
+        <a href="#" onclick="showPage('notes')">Anotações</a> | 
+        <a href="#" onclick="showPage('report')">Relatório</a>
     </div>
 
     <div id="products">
         <h1>Lista de Balas e Doces</h1>
-        <div class="product" data-name="Bala de Morango" data-price="0.50">
-            Bala de Morango - R$ 0,50
-            <div>
-                <button onclick="decreaseQuantity(this)">-</button>
-                <input type="number" value="0" min="0" onchange="manualQuantityChange(this)">
-                <button onclick="increaseQuantity(this)">+</button>
-            </div>
-        </div>
-        <div class="product" data-name="Chiclete" data-price="1.00">
-            Chiclete - R$ 1,00
-            <div>
-                <button onclick="decreaseQuantity(this)">-</button>
-                <input type="number" value="0" min="0" onchange="manualQuantityChange(this)">
-                <button onclick="increaseQuantity(this)">+</button>
-            </div>
-        </div>
-        <div class="product" data-name="Pirulito" data-price="0.75">
-            Pirulito - R$ 0,75
-            <div>
-                <button onclick="decreaseQuantity(this)">-</button>
-                <input type="number" value="0" min="0" onchange="manualQuantityChange(this)">
-                <button onclick="increaseQuantity(this)">+</button>
-            </div>
-        </div>
-        <div class="product" data-name="Ruffles" data-price="3.00">
-            Ruffles - R$ 3,00
-            <div>
-                <button onclick="decreaseQuantity(this)">-</button>
-                <input type="number" value="0" min="0" onchange="manualQuantityChange(this)">
-                <button onclick="increaseQuantity(this)">+</button>
-            </div>
-        </div>
-        <div class="product" data-name="Lays" data-price="2.50">
-            Lays - R$ 2,50
-            <div>
-                <button onclick="decreaseQuantity(this)">-</button>
-                <input type="number" value="0" min="0" onchange="manualQuantityChange(this)">
-                <button onclick="increaseQuantity(this)">+</button>
-            </div>
-        </div>
+        <!-- Produtos vão ser adicionados aqui -->
+        <div id="productList"></div>
+
         <!-- Formulário para adicionar mais produtos -->
         <h2>Adicionar Produto</h2>
         <form onsubmit="addProduct(); return false;">
@@ -112,14 +76,17 @@
             </div>
             <div>
                 <label for="products">Produtos:</label>
-                <select id="productsSelect" required>
-                    <!-- Options will be populated by JavaScript -->
-                </select>
+                <select id="productsSelect" required></select>
                 <input type="number" id="productQuantity" placeholder="Quantidade" min="1" value="1" required>
             </div>
             <button type="submit">Adicionar Anotação</button>
         </form>
         <ul id="notesList"></ul>
+    </div>
+
+    <div id="report" style="display: none;">
+        <h2>Relatório da Loja</h2>
+        <ul id="reportList"></ul>
     </div>
 
     <script>
@@ -133,21 +100,26 @@
 
         let sales = {};
         let notes = [];
+        let dailySales = {};
 
         document.addEventListener("DOMContentLoaded", function() {
             loadSavedData();
             populateProductSelect();
+            populateProductList();
         });
 
         function showPage(page) {
             document.getElementById('products').style.display = page === 'products' ? 'block' : 'none';
             document.getElementById('sales').style.display = page === 'sales' ? 'block' : 'none';
             document.getElementById('notes').style.display = page === 'notes' ? 'block' : 'none';
+            document.getElementById('report').style.display = page === 'report' ? 'block' : 'none';
+            if (page === 'report') updateReport();
         }
 
         function increaseQuantity(button) {
             let quantityInput = button.previousElementSibling;
             quantityInput.value = parseInt(quantityInput.value) + 1;
+            recordSale(button.parentElement.parentElement);
         }
 
         function decreaseQuantity(button) {
@@ -155,7 +127,7 @@
             let quantity = parseInt(quantityInput.value);
             if (quantity > 0) {
                 quantityInput.value = quantity - 1;
-                recordSale(button.parentElement.parentElement);
+                recordSale(button.parentElement.parentElement, true);
             }
         }
 
@@ -165,16 +137,16 @@
             }
         }
 
-        function recordSale(productElement) {
+        function recordSale(productElement, isDecrease = false) {
             let name = productElement.getAttribute('data-name');
             let price = parseFloat(productElement.getAttribute('data-price'));
-            sales[name] = (sales[name] || 0) + 1;
-            updateSalesDisplay();
+            sales[name] = (sales[name] || 0) + (isDecrease ? -1 : 1);
 
-            let totalSales = document.getElementById('totalSales');
-            let total = parseFloat(totalSales.textContent);
-            total += price;
-            totalSales.textContent = total.toFixed(2);
+            let date = new Date().toISOString().split('T')[0];
+            dailySales[date] = dailySales[date] || { total: 0, products: {}, payments: { paid: [], pending: [] } };
+            dailySales[date].total += (isDecrease ? -price : price);
+            dailySales[date].products[name] = (dailySales[date].products[name] || 0) + (isDecrease ? -1 : 1);
+            updateSalesDisplay();
             saveData();
         }
 
@@ -186,6 +158,10 @@
                 listItem.textContent = `${product} (${sales[product]})`;
                 salesList.appendChild(listItem);
             }
+
+            let totalSales = document.getElementById('totalSales');
+            let total = Object.keys(dailySales).reduce((sum, date) => sum + dailySales[date].total, 0);
+            totalSales.textContent = total.toFixed(2);
         }
 
         function addProduct() {
@@ -198,8 +174,8 @@
         }
 
         function populateProductList() {
-            let productList = document.getElementById('products');
-            productList.innerHTML = '<h1>Lista de Balas e Doces</h1>';
+            let productList = document.getElementById('productList');
+            productList.innerHTML = '';
             products.forEach(product => {
                 let productElement = document.createElement('div');
                 productElement.className = 'product';
@@ -208,22 +184,13 @@
                 productElement.innerHTML = `
                     ${product.name} - R$ ${product.price.toFixed(2)}
                     <div>
-                        <button onclick="decreaseQuantity(this)">-</button>
+                        <button onclick="decreaseQuantity(this)">Vendido -</button>
                         <input type="number" value="0" min="0" onchange="manualQuantityChange(this)">
-                        <button onclick="increaseQuantity(this)">+</button>
+                        <button onclick="increaseQuantity(this)">Adicionado +</button>
                     </div>
                 `;
                 productList.appendChild(productElement);
             });
-            let addProductForm = `
-                <h2>Adicionar Produto</h2>
-                <form onsubmit="addProduct(); return false;">
-                    <input type="text" id="newProductName" placeholder="Nome do Produto" required>
-                    <input type="number" id="newProductPrice" step="0.01" placeholder="Preço" required>
-                    <button type="submit">Adicionar</button>
-                </form>
-            `;
-            productList.innerHTML += addProductForm;
         }
 
         function populateProductSelect() {
@@ -274,10 +241,32 @@
             return product ? product.price : 0;
         }
 
+        function updateReport() {
+            let reportList = document.getElementById('reportList');
+            reportList.innerHTML = '';
+            for (let date in dailySales) {
+                let dateItem = document.createElement('li');
+                let dailyTotal = dailySales[date].total.toFixed(2);
+                let productsSold = Object.keys(dailySales[date].products).map(product => `${product} (${dailySales[date].products[product]})`).join(', ');
+                let paymentsPaid = dailySales[date].payments.paid.join(', ');
+                let paymentsPending = dailySales[date].payments.pending.join(', ');
+
+                dateItem.innerHTML = `
+                    <h3>${date}</h3>
+                    <p>Total: R$ ${dailyTotal}</p>
+                    <p>Produtos Vendidos: ${productsSold}</p>
+                    <p>Pagamentos Realizados: ${paymentsPaid}</p>
+                    <p>Pagamentos Pendentes: ${paymentsPending}</p>
+                `;
+                reportList.appendChild(dateItem);
+            }
+        }
+
         function saveData() {
             localStorage.setItem('products', JSON.stringify(products));
             localStorage.setItem('sales', JSON.stringify(sales));
             localStorage.setItem('notes', JSON.stringify(notes));
+            localStorage.setItem('dailySales', JSON.stringify(dailySales));
         }
 
         function loadSavedData() {
@@ -289,6 +278,9 @@
             }
             if (localStorage.getItem('notes')) {
                 notes = JSON.parse(localStorage.getItem('notes'));
+            }
+            if (localStorage.getItem('dailySales')) {
+                dailySales = JSON.parse(localStorage.getItem('dailySales'));
             }
             populateProductList();
             updateSalesDisplay();
