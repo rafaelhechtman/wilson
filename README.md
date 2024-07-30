@@ -45,10 +45,8 @@
 
     <div id="products">
         <h1>Lista de Balas e Doces</h1>
-        <!-- Produtos vão ser adicionados aqui -->
         <div id="productList"></div>
 
-        <!-- Formulário para adicionar mais produtos -->
         <h2>Adicionar Produto</h2>
         <form onsubmit="addProduct(); return false;">
             <input type="text" id="newProductName" placeholder="Nome do Produto" required>
@@ -78,7 +76,9 @@
                 <label for="products">Produtos:</label>
                 <select id="productsSelect" required></select>
                 <input type="number" id="productQuantity" placeholder="Quantidade" min="1" value="1" required>
+                <button type="button" onclick="addProductToNote()">Adicionar Produto</button>
             </div>
+            <ul id="noteProductsList"></ul>
             <button type="submit">Adicionar Anotação</button>
         </form>
         <ul id="notesList"></ul>
@@ -90,14 +90,7 @@
     </div>
 
     <script>
-        let products = [
-            {name: "Bala de Morango", price: 0.50},
-            {name: "Chiclete", price: 1.00},
-            {name: "Pirulito", price: 0.75},
-            {name: "Ruffles", price: 3.00},
-            {name: "Lays", price: 2.50}
-        ];
-
+        let products = [];
         let sales = {};
         let notes = [];
         let dailySales = {};
@@ -106,6 +99,9 @@
             loadSavedData();
             populateProductSelect();
             populateProductList();
+            updateSalesDisplay();
+            updateNotesDisplay();
+            updateReport();
         });
 
         function showPage(page) {
@@ -146,6 +142,7 @@
             dailySales[date] = dailySales[date] || { total: 0, products: {}, payments: { paid: [], pending: [] } };
             dailySales[date].total += (isDecrease ? -price : price);
             dailySales[date].products[name] = (dailySales[date].products[name] || 0) + (isDecrease ? -1 : 1);
+
             updateSalesDisplay();
             saveData();
         }
@@ -204,15 +201,44 @@
             });
         }
 
+        let noteProducts = [];
+
+        function addProductToNote() {
+            let productSelect = document.getElementById('productsSelect');
+            let productName = productSelect.value;
+            let quantity = parseInt(document.getElementById('productQuantity').value);
+
+            noteProducts.push({ productName, quantity });
+            updateNoteProductsList();
+        }
+
+        function updateNoteProductsList() {
+            let noteProductsList = document.getElementById('noteProductsList');
+            noteProductsList.innerHTML = '';
+            noteProducts.forEach((item, index) => {
+                let listItem = document.createElement('li');
+                listItem.textContent = `${item.productName} - ${item.quantity}`;
+                listItem.innerHTML += ` <button onclick="removeProductFromNote(${index})">Remover</button>`;
+                noteProductsList.appendChild(listItem);
+            });
+        }
+
+        function removeProductFromNote(index) {
+            noteProducts.splice(index, 1);
+            updateNoteProductsList();
+        }
+
         function addNote() {
             let customerName = document.getElementById('customerName').value;
             let date = document.getElementById('date').value;
-            let product = document.getElementById('productsSelect').value;
-            let quantity = parseInt(document.getElementById('productQuantity').value);
-            let note = {customerName, date, product, quantity, status: 'pendente'};
+            let note = { customerName, date, products: noteProducts, status: 'pendente' };
 
             notes.push(note);
+            dailySales[date] = dailySales[date] || { total: 0, products: {}, payments: { paid: [], pending: [] } };
+            dailySales[date].payments.pending.push(customerName);
+            noteProducts = [];
             updateNotesDisplay();
+            updateNoteProductsList();
             saveData();
         }
 
@@ -220,10 +246,11 @@
             let notesList = document.getElementById('notesList');
             notesList.innerHTML = '';
             notes.forEach((note, index) => {
+                let productsList = note.products.map(item => `${item.productName} (${item.quantity})`).join(', ');
                 let noteItem = document.createElement('li');
                 noteItem.className = 'note';
                 noteItem.innerHTML = `
-                    ${note.customerName} - ${note.date} - ${note.product} (${note.quantity}) - R$ ${(getProductPrice(note.product) * note.quantity).toFixed(2)}
+                    ${note.customerName} - ${note.date} - ${productsList} - 
                     <button onclick="togglePaymentStatus(${index})">${note.status}</button>
                 `;
                 notesList.appendChild(noteItem);
@@ -231,14 +258,21 @@
         }
 
         function togglePaymentStatus(index) {
-            notes[index].status = notes[index].status === 'pendente' ? 'pago' : 'pendente';
-            updateNotesDisplay();
-            saveData();
-        }
+            let note = notes[index];
+            note.status = note.status === 'pendente' ? 'pago' : 'pendente';
+            let dailyPaymentList = dailySales[note.date].payments;
 
-        function getProductPrice(productName) {
-            let product = products.find(p => p.name === productName);
-            return product ? product.price : 0;
+            if (note.status === 'pago') {
+                dailyPaymentList.pending = dailyPaymentList.pending.filter(name => name !== note.customerName);
+                dailyPaymentList.paid.push(note.customerName);
+            } else {
+                dailyPaymentList.paid = dailyPaymentList.paid.filter(name => name !== note.customerName);
+                dailyPaymentList.pending.push(note.customerName);
+            }
+
+            updateNotesDisplay();
+            updateReport();
+            saveData();
         }
 
         function updateReport() {
@@ -282,9 +316,6 @@
             if (localStorage.getItem('dailySales')) {
                 dailySales = JSON.parse(localStorage.getItem('dailySales'));
             }
-            populateProductList();
-            updateSalesDisplay();
-            updateNotesDisplay();
         }
     </script>
 </body>
