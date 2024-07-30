@@ -12,13 +12,13 @@
         h1, h2 {
             color: #333;
         }
-        .product {
+        .product, .note {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
         }
-        .product button {
+        .product button, .note button {
             margin: 0 5px;
         }
         .nav {
@@ -27,8 +27,11 @@
         .nav a {
             margin-right: 10px;
         }
-        input[type="number"] {
-            width: 50px;
+        input[type="number"], input[type="text"], input[type="date"] {
+            width: 150px;
+        }
+        input[type="text"], input[type="date"] {
+            width: 200px;
         }
     </style>
 </head>
@@ -81,7 +84,13 @@
                 <button onclick="increaseQuantity(this)">+</button>
             </div>
         </div>
-        <!-- Adicione mais produtos conforme necessário -->
+        <!-- Formulário para adicionar mais produtos -->
+        <h2>Adicionar Produto</h2>
+        <form onsubmit="addProduct(); return false;">
+            <input type="text" id="newProductName" placeholder="Nome do Produto" required>
+            <input type="number" id="newProductPrice" step="0.01" placeholder="Preço" required>
+            <button type="submit">Adicionar</button>
+        </form>
     </div>
 
     <div id="sales" style="display: none;">
@@ -103,11 +112,10 @@
             </div>
             <div>
                 <label for="products">Produtos:</label>
-                <input type="text" id="products" required>
-            </div>
-            <div>
-                <label for="amount">Valor:</label>
-                <input type="number" id="amount" step="0.01" required>
+                <select id="productsSelect" required>
+                    <!-- Options will be populated by JavaScript -->
+                </select>
+                <input type="number" id="productQuantity" placeholder="Quantidade" min="1" value="1" required>
             </div>
             <button type="submit">Adicionar Anotação</button>
         </form>
@@ -115,6 +123,22 @@
     </div>
 
     <script>
+        let products = [
+            {name: "Bala de Morango", price: 0.50},
+            {name: "Chiclete", price: 1.00},
+            {name: "Pirulito", price: 0.75},
+            {name: "Ruffles", price: 3.00},
+            {name: "Lays", price: 2.50}
+        ];
+
+        let sales = {};
+        let notes = [];
+
+        document.addEventListener("DOMContentLoaded", function() {
+            loadSavedData();
+            populateProductSelect();
+        });
+
         function showPage(page) {
             document.getElementById('products').style.display = page === 'products' ? 'block' : 'none';
             document.getElementById('sales').style.display = page === 'sales' ? 'block' : 'none';
@@ -144,39 +168,131 @@
         function recordSale(productElement) {
             let name = productElement.getAttribute('data-name');
             let price = parseFloat(productElement.getAttribute('data-price'));
-            let salesList = document.getElementById('salesList');
-            let existingItem = salesList.querySelector(`li[data-name="${name}"]`);
-            if (existingItem) {
-                let countSpan = existingItem.querySelector('.count');
-                countSpan.textContent = parseInt(countSpan.textContent) + 1;
-            } else {
-                let saleItem = document.createElement('li');
-                saleItem.setAttribute('data-name', name);
-                saleItem.innerHTML = `${name} (<span class="count">1</span>)`;
-                salesList.appendChild(saleItem);
-            }
+            sales[name] = (sales[name] || 0) + 1;
+            updateSalesDisplay();
 
             let totalSales = document.getElementById('totalSales');
             let total = parseFloat(totalSales.textContent);
             total += price;
             totalSales.textContent = total.toFixed(2);
+            saveData();
+        }
+
+        function updateSalesDisplay() {
+            let salesList = document.getElementById('salesList');
+            salesList.innerHTML = '';
+            for (let product in sales) {
+                let listItem = document.createElement('li');
+                listItem.textContent = `${product} (${sales[product]})`;
+                salesList.appendChild(listItem);
+            }
+        }
+
+        function addProduct() {
+            let name = document.getElementById('newProductName').value;
+            let price = parseFloat(document.getElementById('newProductPrice').value);
+            products.push({name: name, price: price});
+            populateProductList();
+            populateProductSelect();
+            saveData();
+        }
+
+        function populateProductList() {
+            let productList = document.getElementById('products');
+            productList.innerHTML = '<h1>Lista de Balas e Doces</h1>';
+            products.forEach(product => {
+                let productElement = document.createElement('div');
+                productElement.className = 'product';
+                productElement.setAttribute('data-name', product.name);
+                productElement.setAttribute('data-price', product.price.toFixed(2));
+                productElement.innerHTML = `
+                    ${product.name} - R$ ${product.price.toFixed(2)}
+                    <div>
+                        <button onclick="decreaseQuantity(this)">-</button>
+                        <input type="number" value="0" min="0" onchange="manualQuantityChange(this)">
+                        <button onclick="increaseQuantity(this)">+</button>
+                    </div>
+                `;
+                productList.appendChild(productElement);
+            });
+            let addProductForm = `
+                <h2>Adicionar Produto</h2>
+                <form onsubmit="addProduct(); return false;">
+                    <input type="text" id="newProductName" placeholder="Nome do Produto" required>
+                    <input type="number" id="newProductPrice" step="0.01" placeholder="Preço" required>
+                    <button type="submit">Adicionar</button>
+                </form>
+            `;
+            productList.innerHTML += addProductForm;
+        }
+
+        function populateProductSelect() {
+            let productSelect = document.getElementById('productsSelect');
+            productSelect.innerHTML = '';
+            products.forEach(product => {
+                let option = document.createElement('option');
+                option.value = product.name;
+                option.textContent = `${product.name} - R$ ${product.price.toFixed(2)}`;
+                productSelect.appendChild(option);
+            });
         }
 
         function addNote() {
             let customerName = document.getElementById('customerName').value;
             let date = document.getElementById('date').value;
-            let products = document.getElementById('products').value;
-            let amount = parseFloat(document.getElementById('amount').value).toFixed(2);
+            let product = document.getElementById('productsSelect').value;
+            let quantity = parseInt(document.getElementById('productQuantity').value);
+            let note = {customerName, date, product, quantity, status: 'pendente'};
 
+            notes.push(note);
+            updateNotesDisplay();
+            saveData();
+        }
+
+        function updateNotesDisplay() {
             let notesList = document.getElementById('notesList');
-            let noteItem = document.createElement('li');
-            noteItem.textContent = `${customerName} - ${date} - ${products} - R$ ${amount}`;
-            notesList.appendChild(noteItem);
+            notesList.innerHTML = '';
+            notes.forEach((note, index) => {
+                let noteItem = document.createElement('li');
+                noteItem.className = 'note';
+                noteItem.innerHTML = `
+                    ${note.customerName} - ${note.date} - ${note.product} (${note.quantity}) - R$ ${(getProductPrice(note.product) * note.quantity).toFixed(2)}
+                    <button onclick="togglePaymentStatus(${index})">${note.status}</button>
+                `;
+                notesList.appendChild(noteItem);
+            });
+        }
 
-            document.getElementById('customerName').value = '';
-            document.getElementById('date').value = '';
-            document.getElementById('products').value = '';
-            document.getElementById('amount').value = '';
+        function togglePaymentStatus(index) {
+            notes[index].status = notes[index].status === 'pendente' ? 'pago' : 'pendente';
+            updateNotesDisplay();
+            saveData();
+        }
+
+        function getProductPrice(productName) {
+            let product = products.find(p => p.name === productName);
+            return product ? product.price : 0;
+        }
+
+        function saveData() {
+            localStorage.setItem('products', JSON.stringify(products));
+            localStorage.setItem('sales', JSON.stringify(sales));
+            localStorage.setItem('notes', JSON.stringify(notes));
+        }
+
+        function loadSavedData() {
+            if (localStorage.getItem('products')) {
+                products = JSON.parse(localStorage.getItem('products'));
+            }
+            if (localStorage.getItem('sales')) {
+                sales = JSON.parse(localStorage.getItem('sales'));
+            }
+            if (localStorage.getItem('notes')) {
+                notes = JSON.parse(localStorage.getItem('notes'));
+            }
+            populateProductList();
+            updateSalesDisplay();
+            updateNotesDisplay();
         }
     </script>
 </body>
